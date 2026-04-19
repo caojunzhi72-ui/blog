@@ -1,11 +1,47 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, Component } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { ThemeProvider } from './utils/themeContext.jsx';
+import { ThemeContext } from './utils/themeContext.js';
 import Header from './components/Header';
 import ArticleCard from './components/ArticleCard';
 import SearchModal from './components/SearchModal';
 import SettingsModal from './components/SettingsModal';
 import LoginModal from './components/LoginModal';
+import { articleApi } from './services/api';
+
+// 错误边界组件
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-4">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">出错了</h1>
+          <p className="text-gray-600 mb-4">页面加载出现问题，请刷新重试</p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            重试
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // 懒加载组件
 const AdminLayout = lazy(() => import('./components/AdminLayout'));
@@ -20,17 +56,38 @@ function HomePage() {
   const [selectedTag, setSelectedTag] = useState('全部');
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // 导入 API 请求工具
-  const { apiRequest } = require('./utils/api');
+  const [error, setError] = useState(null);
 
   // 获取文章数据
   useEffect(() => {
     const fetchArticles = async () => {
       try {
         setLoading(true);
-        // 模拟 API 请求，实际项目中应使用真实 API 地址
-        // const data = await apiRequest('https://api.example.com/articles');
+        setError(null);
+        
+        // 尝试从 API 获取数据
+        try {
+          const response = await articleApi.getArticles();
+          const apiArticles = response.articles || [];
+          
+          // 转换 API 数据格式
+          const formattedArticles = apiArticles.map(article => ({
+            id: article.id,
+            date: article.created_at ? new Date(article.created_at).toLocaleDateString('zh-CN') : '2024-12-15',
+            tag: '文章',
+            title: article.title,
+            excerpt: article.excerpt || article.content?.substring(0, 100) + '...',
+            readTime: Math.ceil(article.content?.length / 500) || 5,
+            views: article.view_count?.toString() || '0'
+          }));
+          
+          if (formattedArticles.length > 0) {
+            setArticles(formattedArticles);
+            return;
+          }
+        } catch (apiErr) {
+          console.log('API request failed, using mock data');
+        }
         
         // 模拟 API 响应数据
         const data = [
@@ -73,8 +130,22 @@ function HomePage() {
         ];
         
         setArticles(data);
-      } catch (error) {
-        console.error('Failed to fetch articles:', error);
+      } catch (err) {
+        console.error('Failed to fetch articles:', err);
+        setError('获取文章失败');
+        
+        // 备用数据
+        setArticles([
+          {
+            id: 1,
+            date: '2024-12-15',
+            tag: 'React',
+            title: '深入理解 React Server Components',
+            excerpt: 'React Server Components 是 React 生态中的一项重大革新',
+            readTime: 8,
+            views: '1.2k'
+          }
+        ]);
       } finally {
         setLoading(false);
       }
@@ -147,6 +218,8 @@ function HomePage() {
             ))}
           </div>
 
+          {error && <div className="mb-4 p-4 bg-red-50 text-red-700 rounded">{error}</div>}
+          
           {loading ? (
             <div className="flex justify-center items-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
@@ -198,16 +271,18 @@ function App() {
     <ThemeProvider>
       <Router>
         <Suspense fallback={<div className="flex justify-center items-center h-screen">加载中...</div>}>
-          <Routes>
-            {/* 前台路由 */}
-            <Route path="/" element={<HomePage />} />
-            
-            {/* 管理后台路由 */}
-            <Route path="/admin" element={<AdminLayout><AdminDashboard /></AdminLayout>} />
-            <Route path="/admin/articles" element={<AdminLayout><ArticleList /></AdminLayout>} />
-            <Route path="/admin/articles/create" element={<AdminLayout><ArticleForm /></AdminLayout>} />
-            <Route path="/admin/articles/edit/:id" element={<AdminLayout><ArticleForm /></AdminLayout>} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              {/* 前台路由 */}
+              <Route path="/" element={<HomePage />} />
+              
+              {/* 管理后台路由 */}
+              <Route path="/admin" element={<AdminLayout><AdminDashboard /></AdminLayout>} />
+              <Route path="/admin/articles" element={<AdminLayout><ArticleList /></AdminLayout>} />
+              <Route path="/admin/articles/create" element={<AdminLayout><ArticleForm /></AdminLayout>} />
+              <Route path="/admin/articles/edit/:id" element={<AdminLayout><ArticleForm /></AdminLayout>} />
+            </Routes>
+          </ErrorBoundary>
         </Suspense>
       </Router>
     </ThemeProvider>

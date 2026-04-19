@@ -541,7 +541,7 @@ app.get('/api/search', async (req, res) => {
     // 搜索文章
     if (type === 'all' || type === 'articles') {
       const articles = await dbQuery(
-        `SELECT id, title, excerpt, created_at, tag FROM articles 
+        `SELECT id, title, excerpt, created_at FROM articles 
          WHERE (title LIKE ? OR content LIKE ? OR excerpt LIKE ?) 
          AND status = 'published' 
          ORDER BY created_at DESC LIMIT 20`,
